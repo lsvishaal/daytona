@@ -97,17 +97,6 @@ func (d *DockerClient) ContainerDiskResize(ctx context.Context, sandboxId string
 		}
 	}
 
-	// Get filesystem type to determine if we can use storage-opt
-	info, err := d.apiClient.Info(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get docker info: %w", err)
-	}
-
-	filesystem := d.getFilesystem(info)
-	if filesystem != "xfs" {
-		return fmt.Errorf("%s requires XFS filesystem, current filesystem: %s", operationName, filesystem)
-	}
-
 	// Rename container after validation checks to reduce error handling complexity
 	timestamp := time.Now().Unix()
 	oldName := fmt.Sprintf("%s-%s-%d", sandboxId, operationName, timestamp)
@@ -135,7 +124,7 @@ func (d *DockerClient) ContainerDiskResize(ctx context.Context, sandboxId string
 		newHostConfig.StorageOpt = make(map[string]string)
 	}
 	newHostConfig.StorageOpt["size"] = fmt.Sprintf("%d", newStorageBytes)
-	d.logger.DebugContext(ctx, "Setting storage", "bytes", newStorageBytes, "gigabytes", float64(newStorageBytes)/(1024*1024*1024), "filesystem", filesystem)
+	d.logger.DebugContext(ctx, "Setting storage", "bytes", newStorageBytes, "gigabytes", float64(newStorageBytes)/(1024*1024*1024), "filesystem", d.filesystem)
 
 	// Apply CPU/memory changes if specified (0 = don't change)
 	if cpu > 0 {

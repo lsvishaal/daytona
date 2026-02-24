@@ -4,6 +4,7 @@
 package docker
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
@@ -56,6 +57,22 @@ func NewDockerClient(config DockerClientConfig) *DockerClient {
 		config.BackupTimeoutMin = 60
 	}
 
+	info, err := config.ApiClient.Info(context.Background())
+	if err != nil {
+		logger.Error("Failed to get Docker info", "error", err)
+		// TODO: RETURN ERR
+		panic(err)
+	}
+
+	filesystem := ""
+
+	for _, driver := range info.DriverStatus {
+		if driver[0] == "Backing Filesystem" {
+			filesystem = driver[1]
+			break
+		}
+	}
+
 	return &DockerClient{
 		apiClient:                    config.ApiClient,
 		statesCache:                  config.StatesCache,
@@ -77,6 +94,7 @@ func NewDockerClient(config DockerClientConfig) *DockerClient {
 		volumeCleanupExclusionPeriod: config.VolumeCleanupExclusionPeriod,
 		backupTimeoutMin:             config.BackupTimeoutMin,
 		initializeDaemonTelemetry:    config.InitializeDaemonTelemetry,
+		filesystem:                   filesystem,
 	}
 }
 
@@ -108,4 +126,5 @@ type DockerClient struct {
 	volumeCleanupMutex           sync.Mutex
 	lastVolumeCleanup            time.Time
 	initializeDaemonTelemetry    bool
+	filesystem                   string
 }

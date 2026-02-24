@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/daytonaio/runner/pkg/common"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type daemonVersionResponse struct {
@@ -36,14 +37,20 @@ func (d *DockerClient) GetDaemonVersion(ctx context.Context, sandboxId string) (
 		return "", err
 	}
 
-	return d.getDaemonVersion(ctx, target)
+	client := &http.Client{
+		Timeout:   1 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	return d.getDaemonVersion(ctx, target, client)
 }
 
-func (d *DockerClient) getDaemonVersion(ctx context.Context, targetUrl *url.URL) (string, error) {
-	client := http.Client{
-		Timeout: 1 * time.Second,
+func (d *DockerClient) getDaemonVersion(ctx context.Context, targetUrl *url.URL, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetUrl.String(), nil)
+	if err != nil {
+		return "", err
 	}
-	resp, err := client.Get(targetUrl.String())
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

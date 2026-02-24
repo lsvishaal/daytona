@@ -16,6 +16,7 @@ import (
 	"github.com/daytonaio/common-go/pkg/timer"
 	"github.com/daytonaio/runner/pkg/common"
 	"github.com/docker/docker/api/types/container"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func (d *DockerClient) startDaytonaDaemon(ctx context.Context, containerId string, workDir string) error {
@@ -61,6 +62,11 @@ func (d *DockerClient) waitForDaemonRunning(ctx context.Context, containerIP str
 		return "", common_errors.NewBadRequestError(fmt.Errorf("failed to parse target URL: %w", err))
 	}
 
+	client := &http.Client{
+		Timeout:   1 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
 	timeout := time.Duration(d.daemonStartTimeoutSec) * time.Second
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -70,7 +76,7 @@ func (d *DockerClient) waitForDaemonRunning(ctx context.Context, containerIP str
 		case <-timeoutCtx.Done():
 			return "", fmt.Errorf("timeout waiting for daemon to start")
 		default:
-			version, err := d.getDaemonVersion(ctx, target)
+			version, err := d.getDaemonVersion(ctx, target, client)
 			if err != nil {
 				time.Sleep(5 * time.Millisecond)
 				continue
@@ -84,7 +90,7 @@ func (d *DockerClient) waitForDaemonRunning(ctx context.Context, containerIP str
 			// Optimistically initialize the daemon in parallel while waiting for it to be ready, to save time.
 			// If initialization fails, log the error but do not fail the entire process, as the daemon is already running at this point.
 			go func() {
-				err := d.initializeDaemon(containerIP, *authToken)
+				err := d.initializeDaemon(ctx, containerIP, *authToken, client)
 				if err != nil {
 					d.logger.ErrorContext(ctx, "Failed to initialize daemon telemetry", "error", err)
 				}
@@ -99,7 +105,7 @@ type sandboxToken struct {
 	Token string `json:"token"`
 }
 
-func (d *DockerClient) initializeDaemon(containerIP string, token string) error {
+func (d *DockerClient) initializeDaemon(ctx context.Context, containerIP string, token string, client *http.Client) error {
 	if !d.initializeDaemonTelemetry {
 		return nil
 	}
@@ -114,7 +120,12 @@ func (d *DockerClient) initializeDaemon(containerIP string, token string) error 
 	}
 
 	url := fmt.Sprintf("http://%s:2280/init", containerIP)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create init request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to initialize daemon: %w", err)
 	}
