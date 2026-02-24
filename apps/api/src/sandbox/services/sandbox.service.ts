@@ -78,7 +78,7 @@ import { Redis } from 'ioredis'
 import {
   SANDBOX_LOOKUP_CACHE_TTL_MS,
   SANDBOX_ORG_ID_CACHE_TTL_MS,
-  TOOLBOX_PROXY_URL_CACHE_TTL_MS,
+  TOOLBOX_PROXY_URL_CACHE_TTL_S,
   sandboxLookupCacheKeyById,
   sandboxLookupCacheKeyByName,
   sandboxOrgIdCacheKeyById,
@@ -1657,7 +1657,7 @@ export class SandboxService {
       ? region.toolboxProxyUrl + '/toolbox'
       : this.configService.getOrThrow('proxy.toolboxUrl')
 
-    await this.redis.setex(cacheKey, TOOLBOX_PROXY_URL_CACHE_TTL_MS, url)
+    await this.redis.setex(cacheKey, TOOLBOX_PROXY_URL_CACHE_TTL_S, url)
     return url
   }
 
@@ -1690,7 +1690,7 @@ export class SandboxService {
         const region = regionMap.get(id)
         const url = region?.toolboxProxyUrl ? region.toolboxProxyUrl + '/toolbox' : fallback
         result.set(id, url)
-        setPipeline.setex(toolboxProxyUrlCacheKey(id), TOOLBOX_PROXY_URL_CACHE_TTL_MS, url)
+        setPipeline.setex(toolboxProxyUrlCacheKey(id), TOOLBOX_PROXY_URL_CACHE_TTL_S, url)
       }
       await setPipeline.exec()
     }
